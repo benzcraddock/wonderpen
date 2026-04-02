@@ -357,6 +357,7 @@ export default function WonderPen() {
   const drawStateRef = useRef({ drawing: false, points: [] });
   const orbScreenPositions = useRef([]);
   const orbButtonRefs = useRef([]);
+  const switchingRef = useRef(false);
 
   const [activeMaterial, setActiveMaterial] = useState(() => {
     const saved = localStorage.getItem('wonderpen-material');
@@ -369,6 +370,18 @@ export default function WonderPen() {
   const [heroLoaded, setHeroLoaded] = useState(false);
   const [showScrollHint, setShowScrollHint] = useState(false);
   const [scrollY, setScrollY] = useState(0);
+  const [penPassed, setPenPassed] = useState(false);
+  const textSplitRef = useRef(0);
+  const splitLeftRef = useRef(null);
+  const splitRightRef = useRef(null);
+  const [isMobile, setIsMobile] = useState(() => typeof window !== 'undefined' && window.innerWidth <= 768);
+
+  // Track viewport size for mobile breakpoint
+  useEffect(() => {
+    const checkMobile = () => setIsMobile(window.innerWidth <= 768);
+    window.addEventListener('resize', checkMobile);
+    return () => window.removeEventListener('resize', checkMobile);
+  }, []);
 
   // ─── Three.js Setup ─────────────────────────────────────────────
   useEffect(() => {
@@ -533,76 +546,134 @@ export default function WonderPen() {
       }
     }
 
-    // Hero load-in animation — physics-based drop with bounce
+    // Hero load-in animation
     const startTime = performance.now();
     let heroLoadedFlag = false;
     let heroAnimDone = false;
-    const dropStartY = 110;
-    const dropEndY = -20;
-    const restitution = 0.3;
+    const isMobileDevice = window.innerWidth <= 768;
 
-    let dropY = dropStartY;
-    let dropVelocity = 0;
-    const gravity = 900;
-    let bounceCount = 0;
-    let settled = false;
-    let impactWobble = 0;
-    let wobbleDecay = 0;
-    let lastDropTime = startTime;
+    if (isMobileDevice) {
+      // Mobile: smooth slide in with text split effect
+      const mobileScale = Math.min(0.8, window.innerHeight / 1200);
+      const mobileEndY = -10;
+      const mobileStartY = 60;
+      pen.position.y = mobileStartY;
+      pen.scale.set(mobileScale, mobileScale, mobileScale);
+      pen.rotation.z = Math.PI;
 
-    pen.position.y = dropStartY;
-    pen.scale.set(0.9, 0.9, 0.9);
+      // Show text immediately so the split is visible
+      setHeroLoaded(true);
 
-    const heroAnim = () => {
-      const nowMs = performance.now();
-      const dt = Math.min((nowMs - lastDropTime) / 1000, 0.033);
-      lastDropTime = nowMs;
-      const elapsed = (nowMs - startTime) / 1000;
+      const heroAnim = () => {
+        const elapsed = (performance.now() - startTime) / 1000;
 
-      if (elapsed > 0.5 && !heroLoadedFlag) {
-        heroLoadedFlag = true;
-        setHeroLoaded(true);
-        setTimeout(() => setShowScrollHint(true), 600);
-      }
+        if (elapsed > 0.8 && !heroLoadedFlag) {
+          heroLoadedFlag = true;
+          setTimeout(() => setShowScrollHint(true), 400);
+        }
 
-      if (!settled) {
-        const substeps = 4;
-        const subDt = dt / substeps;
-        for (let s = 0; s < substeps && !settled; s++) {
-          dropVelocity += gravity * subDt;
-          dropY -= dropVelocity * subDt;
+        if (elapsed < 1.4) {
+          const t = Math.min(elapsed / 1.4, 1);
+          const ease = 1 - Math.pow(1 - t, 3); // ease-out cubic
+          const penY = mobileStartY + (mobileEndY - mobileStartY) * ease;
+          pen.position.y = penY;
 
-          if (dropY <= dropEndY) {
-            dropY = dropEndY;
-            bounceCount++;
+          // Text split: pen passes through text zone (y ~40-20 in scene space)
+          // Split opens as pen enters, closes as pen passes through
+          const splitZoneTop = 45;
+          const splitZoneBottom = 10;
+          if (penY > splitZoneTop) {
+            textSplitRef.current = 0;
+          } else if (penY > splitZoneBottom) {
+            const splitProgress = 1 - (penY - splitZoneBottom) / (splitZoneTop - splitZoneBottom);
+            textSplitRef.current = Math.sin(splitProgress * Math.PI);
+          } else {
+            textSplitRef.current = 0;
+            if (!penPassed) setPenPassed(true);
+          }
+          // Apply directly to DOM — no React re-render
+          if (splitLeftRef.current) splitLeftRef.current.style.transform = `translateX(${-textSplitRef.current * 30}px)`;
+          if (splitRightRef.current) splitRightRef.current.style.transform = `translateX(${textSplitRef.current * 30}px)`;
 
-            if (Math.abs(dropVelocity) > 10 && bounceCount < 4) {
-              dropVelocity = -dropVelocity * restitution;
-              impactWobble = (0.03 / bounceCount) * (Math.random() > 0.5 ? 1 : -1);
-              wobbleDecay = 0;
-            } else {
-              dropVelocity = 0;
+          requestAnimationFrame(heroAnim);
+        } else {
+          pen.position.y = mobileEndY;
+          textSplitRef.current = 0;
+          if (splitLeftRef.current) splitLeftRef.current.style.transform = 'translateX(0)';
+          if (splitRightRef.current) splitRightRef.current.style.transform = 'translateX(0)';
+          heroAnimDone = true;
+        }
+      };
+      requestAnimationFrame(heroAnim);
+    } else {
+      // Desktop: physics-based drop with bounce
+      const dropStartY = 110;
+      const dropEndY = -20;
+      const restitution = 0.3;
+
+      let dropY = dropStartY;
+      let dropVelocity = 0;
+      const gravity = 900;
+      let bounceCount = 0;
+      let settled = false;
+      let impactWobble = 0;
+      let wobbleDecay = 0;
+      let lastDropTime = startTime;
+
+      pen.position.y = dropStartY;
+      pen.scale.set(0.9, 0.9, 0.9);
+
+      const heroAnim = () => {
+        const nowMs = performance.now();
+        const dt = Math.min((nowMs - lastDropTime) / 1000, 0.033);
+        lastDropTime = nowMs;
+        const elapsed = (nowMs - startTime) / 1000;
+
+        if (elapsed > 0.5 && !heroLoadedFlag) {
+          heroLoadedFlag = true;
+          setHeroLoaded(true);
+          setTimeout(() => setShowScrollHint(true), 600);
+        }
+
+        if (!settled) {
+          const substeps = 4;
+          const subDt = dt / substeps;
+          for (let s = 0; s < substeps && !settled; s++) {
+            dropVelocity += gravity * subDt;
+            dropY -= dropVelocity * subDt;
+
+            if (dropY <= dropEndY) {
               dropY = dropEndY;
-              settled = true;
-              heroAnimDone = true;
+              bounceCount++;
+
+              if (Math.abs(dropVelocity) > 10 && bounceCount < 4) {
+                dropVelocity = -dropVelocity * restitution;
+                impactWobble = (0.03 / bounceCount) * (Math.random() > 0.5 ? 1 : -1);
+                wobbleDecay = 0;
+              } else {
+                dropVelocity = 0;
+                dropY = dropEndY;
+                settled = true;
+                heroAnimDone = true;
+              }
             }
           }
-        }
 
-        if (impactWobble !== 0) {
-          wobbleDecay += dt * 6;
-          const wobble = impactWobble * Math.sin(wobbleDecay * 12) * Math.exp(-wobbleDecay * 3);
-          pen.rotation.z = -Math.PI / 2 + wobble;
-        }
+          if (impactWobble !== 0) {
+            wobbleDecay += dt * 6;
+            const wobble = impactWobble * Math.sin(wobbleDecay * 12) * Math.exp(-wobbleDecay * 3);
+            pen.rotation.z = -Math.PI / 2 + wobble;
+          }
 
-        pen.position.y = dropY;
-        requestAnimationFrame(heroAnim);
-      } else {
-        pen.position.y = dropEndY;
-        pen.rotation.z = -Math.PI / 2;
-      }
-    };
-    requestAnimationFrame(heroAnim);
+          pen.position.y = dropY;
+          requestAnimationFrame(heroAnim);
+        } else {
+          pen.position.y = dropEndY;
+          pen.rotation.z = -Math.PI / 2;
+        }
+      };
+      requestAnimationFrame(heroAnim);
+    }
 
     // Ambient rotation — eases to pause on hover, supports flick-to-spin
     let heroRotY = 0;
@@ -658,6 +729,8 @@ export default function WonderPen() {
     window.addEventListener('mouseup', onMouseUp);
 
     // Animation loop
+    const mobile = window.innerWidth <= 768;
+    const mobileScaleVal = Math.min(0.8, window.innerHeight / 1200);
     let animFrame;
     const clock = new THREE.Clock();
     const animate = () => {
@@ -675,43 +748,64 @@ export default function WonderPen() {
         orbGroup.visible = false;
 
         // Scroll-driven transforms
-        const rotZ = -Math.PI / 2 + THREE.MathUtils.degToRad(15) * progress;
-        const scale = 0.9 - 0.13 * progress;
-        const yOffset = -20 + 20 * progress;
-
-        pen.rotation.z = rotZ;
-        pen.rotation.x = Math.PI;
+        let rotZ, scale, yOffset;
+        if (mobile) {
+          // Mobile: pen slides with scroll, scales to interactive size
+          rotZ = Math.PI;
+          const mobileIntScale = Math.min(0.55, window.innerHeight / 1600);
+          scale = mobileScaleVal - (mobileScaleVal - mobileIntScale) * progress;
+          const intY = 25 - (1 - mobileIntScale / 0.55) * 10;
+          yOffset = -10 + (intY + 10) * progress;
+          pen.rotation.z = rotZ;
+          pen.rotation.x = Math.PI;
+        } else {
+          // Desktop: horizontal pen
+          rotZ = -Math.PI / 2 + THREE.MathUtils.degToRad(15) * progress;
+          scale = 0.9 - 0.13 * progress;
+          yOffset = -20 + 20 * progress;
+          pen.rotation.z = rotZ;
+          pen.rotation.x = Math.PI;
+        }
         if (heroAnimDone) {
           pen.position.y = yOffset;
           pen.scale.set(scale, scale, scale);
         }
 
-        // Ambient rotation only in hero — hover pause + flick-to-spin
+        // Ambient rotation only in hero
         if (progress < 0.05) {
-          raycaster.setFromCamera(mouse, camera);
-          const intersects = raycaster.intersectObjects(pen.children, true);
-          hoveringPen = intersects.length > 0;
-          if (!isDraggingPen) {
-            renderer.domElement.style.cursor = hoveringPen ? 'grab' : 'default';
-          }
-
           const dt = Math.min(wallDelta, 0.033);
           const timeSinceLoad = (now - startTime) / 1000;
-          const rotationDelay = 2.0; // approx drop settle time
+          const rotationDelay = mobile ? 1.2 : 2.0;
           const rotRampUp = Math.max(0, Math.min((timeSinceLoad - rotationDelay) / 0.5, 1));
-          // Also ease in after returning from interactive section
           const timeSinceReturn = returnFromInteractiveTime > 0 ? (now - returnFromInteractiveTime) / 1000 : 999;
           const returnRampUp = Math.max(0, Math.min(timeSinceReturn / 1.5, 1));
           const ambientRate = -THREE.MathUtils.degToRad(8.0) * dt * rotRampUp * returnRampUp;
 
-          if (isDraggingPen) {
-            // While dragging — directly follow mouse via accumulated deltas
+          if (mobile) {
+            // Mobile: just spin + levitate (eased in)
+            heroRotY += ambientRate;
+            if (heroAnimDone) {
+              const timeSinceSettle = Math.max(0, timeSinceLoad - 1.2);
+              const bobEaseIn = Math.min(timeSinceSettle / 1.5, 1); // ramps up over 1.5s
+              const bob = Math.sin(now * 0.002) * 1.5 * bobEaseIn;
+              pen.position.y += bob;
+            }
+          } else if (isDraggingPen) {
+            // Desktop: dragging — follow mouse
+            raycaster.setFromCamera(mouse, camera);
+            const intersects = raycaster.intersectObjects(pen.children, true);
+            hoveringPen = intersects.length > 0;
             const totalDx = dragHistory.reduce((sum, d) => sum + d.dx, 0);
             const smoothDx = totalDx / Math.max(dragHistory.length, 1);
             heroRotY += smoothDx * 0.004;
           } else {
-            // Frame-rate independent friction — much stronger when hovering
-            const baseFriction = hoveringPen ? 0.02 : 0.3; // 98% vs 70% decay/sec
+            // Desktop: hover + flick physics
+            raycaster.setFromCamera(mouse, camera);
+            const intersects = raycaster.intersectObjects(pen.children, true);
+            hoveringPen = intersects.length > 0;
+            renderer.domElement.style.cursor = hoveringPen ? 'grab' : 'default';
+
+            const baseFriction = hoveringPen ? 0.02 : 0.3;
             const friction = Math.pow(baseFriction, dt);
             angularVelocity *= friction;
 
@@ -762,10 +856,32 @@ export default function WonderPen() {
         orbGroup.visible = true;
 
         // Center pen in viewport for interactive section
-        pen.position.y = 0;
-        pen.rotation.z = -Math.PI / 2 + THREE.MathUtils.degToRad(15);
-        const interactiveScale = 0.77;
-        pen.scale.set(interactiveScale, interactiveScale, interactiveScale);
+        if (mobile) {
+          controls.enabled = false;
+          controls.autoRotate = false;
+          pen.rotation.z = Math.PI;
+          pen.rotation.x = Math.PI;
+          const interactiveScale = Math.min(0.55, window.innerHeight / 1600);
+          pen.position.y = 25 - (1 - interactiveScale / 0.55) * 10;
+          pen.scale.set(interactiveScale, interactiveScale, interactiveScale);
+          // Gentle levitation bob
+          const bob = Math.sin(now * 0.002) * 1.5;
+          pen.position.y += bob;
+
+          // Simple constant spin — same as hero (skip during material switch spin)
+          if (!switchingRef.current) {
+            const mdt = Math.min(wallDelta, 0.033);
+            heroRotY -= THREE.MathUtils.degToRad(8.0) * mdt;
+            pen.rotation.y = heroRotY;
+          } else {
+            heroRotY = pen.rotation.y;
+          }
+        } else {
+          pen.position.y = 0;
+          pen.rotation.z = -Math.PI / 2 + THREE.MathUtils.degToRad(15);
+          const interactiveScale = 0.77;
+          pen.scale.set(interactiveScale, interactiveScale, interactiveScale);
+        }
 
         scene.background = new THREE.Color(DARK_BG);
 
@@ -943,6 +1059,7 @@ export default function WonderPen() {
     } catch (e) { /* audio not available */ }
 
     // Animate material transition + spin + particles
+    switchingRef.current = true;
     const startTime = performance.now();
     const duration = 1000;
     const startRotY = pen.rotation.y;
@@ -1032,6 +1149,9 @@ export default function WonderPen() {
       if (t < 1) {
         requestAnimationFrame(animateSwitch);
       } else {
+        // Done switching — sync rotation and clear flag
+        switchingRef.current = false;
+
         // Clean up particles
         particles.forEach((p) => {
           scene.remove(p);
@@ -1310,7 +1430,7 @@ export default function WonderPen() {
   return (
     <div style={{ position: 'relative' }}>
       {/* Navigation */}
-      <nav style={{
+      <nav className="wp-nav" style={{
         position: 'fixed',
         top: 0,
         left: 0,
@@ -1319,22 +1439,25 @@ export default function WonderPen() {
         display: 'flex',
         justifyContent: 'space-between',
         alignItems: 'center',
-        padding: '20px 40px',
+        padding: isMobile ? '12px 16px' : '20px 40px',
+        opacity: heroLoaded ? 1 : 0,
+        transition: 'opacity 0.5s ease',
         background: isInteractive || isCta ? 'rgba(10, 10, 10, 0.6)' : 'transparent',
         backdropFilter: isInteractive || isCta ? 'blur(20px)' : 'none',
         WebkitBackdropFilter: isInteractive || isCta ? 'blur(20px)' : 'none',
         transition: isInteractive || isCta ? 'background 0.6s ease' : 'background 0s',
       }}>
-        <svg width="61" height="34" viewBox="0 0 61 34" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <svg width={isMobile ? 40 : 61} height={isMobile ? 22 : 34} viewBox="0 0 61 34" fill="none" xmlns="http://www.w3.org/2000/svg">
           <path d="M35.5312 13.4258C34.4346 14.5864 33.2923 15.8327 32.0996 17.1689C31.1814 18.2009 30.2802 19.1922 29.3965 20.1416L28.3008 16.9443C28.0372 16.1927 27.7743 15.326 27.7383 14.4248H27.5498C27.4743 15.325 27.2116 16.1927 26.9863 16.9443L24.0215 25.5254C20.6867 28.5765 17.5531 30.8078 14.4873 31.9912H10.9863L6.25586 18.125C7.72067 16.2867 9.58894 14.398 11.8203 12.4824C12.3054 12.0627 12.7869 11.6592 13.2646 11.2725L15.8438 20.2891C16.1073 21.2669 16.3701 22.2079 16.3701 23.1475H16.5625C16.638 22.2079 17.0127 21.1915 17.3506 20.2891L22.334 5.88867C23.0395 5.66513 23.7654 5.4636 24.4463 5.28125H32.7119L35.5312 13.4258ZM44.2734 31.9912H33.459L30.2734 22.6982C31.6427 21.3381 33.0411 19.8482 34.4639 18.2217C35.1311 17.4545 35.7824 16.7091 36.418 15.9854L37.9082 20.2891C38.2461 21.1892 38.623 22.2079 38.6963 23.1475H38.8848C38.8848 22.2079 39.1485 21.2669 39.4121 20.2891L42.5723 9.25586C44.0595 7.73316 45.4656 6.40286 46.8125 5.28125H53.3867L44.2734 31.9912ZM12.7158 9.35449C12.0295 9.86065 11.3434 10.4048 10.6641 10.9912C8.55769 12.8318 6.91434 14.6226 5.64258 16.3271L1.875 5.28125H11.5518L12.7158 9.35449ZM44.2676 5.28125C44.0307 5.46298 43.7908 5.64887 43.5498 5.8418L43.7109 5.28125H44.2676Z" fill={`rgb(${Math.round(10 + 240 * navProgress)}, ${Math.round(10 + 240 * navProgress)}, ${Math.round(10 + 240 * navProgress)})`} />
           <path d="M26.4613 4.18621C22.7664 4.27512 16.5482 6.39306 10.1069 11.9512C4.95658 16.3796 1.74045 20.6537 0.95866 24.507C0.112664 28.7496 2.14035 31.5585 5.7057 32.2281C13.4233 33.6911 20.9381 27.2619 30.386 16.6451C41.2927 4.42479 47.9368 -0.32088 54.823 0.0167304C56.5443 0.101133 59.1262 0.72121 59.9643 2.73224C60.1389 3.18239 60.1322 4.31788 59.4011 4.28074C59.0541 4.31338 58.9325 3.76645 58.6644 3.21052C57.7361 1.04644 56.0284 0.668318 54.5527 0.595169C48.3074 0.287944 42.1612 6.88034 32.7562 17.7007C22.3046 29.6454 13.2926 34.3235 5.72034 32.9168C1.66497 32.0773 -0.602659 29.1581 0.1397 24.1221C0.711958 20.5052 2.97057 15.6908 8.94774 10.4658C15.7777 4.56996 23.3319 2.96632 27.1857 4.18396" fill={`rgb(${Math.round(10 + 240 * navProgress)}, ${Math.round(10 + 240 * navProgress)}, ${Math.round(10 + 240 * navProgress)})`} />
         </svg>
         <div style={{
           fontFamily: "'PP Neue Montreal', 'Inter', sans-serif",
           fontWeight: 500,
-          fontSize: '14px',
+          fontSize: isMobile ? '12px' : '14px',
           letterSpacing: '1px',
           color: `rgb(${Math.round(102 + 51 * navProgress)}, ${Math.round(102 + 51 * navProgress)}, ${Math.round(102 + 51 * navProgress)})`,
+          transition: 'color 0.3s ease',
         }}>
           WonderPen by Ben
         </div>
@@ -1354,7 +1477,7 @@ export default function WonderPen() {
         }}
       />
 
-      {/* Draw Canvas Overlay */}
+      {/* Draw Canvas Overlay — hidden on mobile */}
       <canvas
         ref={canvasOverlayRef}
         style={{
@@ -1363,9 +1486,10 @@ export default function WonderPen() {
           left: 0,
           width: '100vw',
           height: '100vh',
-          zIndex: isInteractive ? 200 : -1,
-          pointerEvents: isInteractive ? 'auto' : 'none',
+          zIndex: isInteractive && !isMobile ? 200 : -1,
+          pointerEvents: isInteractive && !isMobile ? 'auto' : 'none',
           cursor: isInteractive ? 'crosshair' : 'default',
+          touchAction: 'none',
         }}
       />
 
@@ -1380,13 +1504,13 @@ export default function WonderPen() {
         flexDirection: 'column',
         justifyContent: 'flex-start',
         alignItems: 'center',
-        paddingTop: '18vh',
+        paddingTop: isMobile ? '10vh' : '18vh',
         zIndex: 5,
         pointerEvents: 'none',
         opacity: heroOpacity,
         transition: 'opacity 0.1s linear',
       }}>
-        <h1 style={{
+        <h1 className="wp-hero-title" style={{
           fontFamily: "'PP Neue Montreal', 'Inter', sans-serif",
           fontSize: 'clamp(48px, 8vw, 96px)',
           fontWeight: 500,
@@ -1394,20 +1518,33 @@ export default function WonderPen() {
           letterSpacing: '-2px',
           marginBottom: '12px',
           opacity: heroLoaded ? 1 : 0,
-          transform: heroLoaded ? 'translateY(0)' : 'translateY(20px)',
-          transition: 'opacity 0.6s ease-out, transform 0.6s ease-out',
+          transition: 'opacity 0.6s ease-out',
         }}>
-          Designed to design.
+          {isMobile ? (
+            <>
+              <span ref={splitLeftRef} style={{
+                display: 'inline-block',
+                transition: 'transform 0.3s ease-out',
+              }}>Designed</span>
+              {' '}
+              <span ref={splitRightRef} style={{
+                display: 'inline-block',
+                transition: 'transform 0.3s ease-out',
+              }}>to design.</span>
+            </>
+          ) : (
+            'Designed to design.'
+          )}
         </h1>
-        <p style={{
+        <p className="wp-hero-sub" style={{
           fontFamily: "'PP Neue Montreal', 'Inter', sans-serif",
           fontSize: '18px',
           fontWeight: 400,
           color: '#666',
           letterSpacing: '3px',
           textTransform: 'uppercase',
-          opacity: heroLoaded ? 1 : 0,
-          transition: 'opacity 0.6s ease-out 0.2s',
+          opacity: (isMobile ? penPassed : heroLoaded) ? 1 : 0,
+          transition: 'opacity 0.8s ease-out',
         }}>
           From the team at Wonderstruck Studio
         </p>
@@ -1416,7 +1553,7 @@ export default function WonderPen() {
       {/* Scroll Indicator */}
       <div style={{
         position: 'fixed',
-        bottom: '40px',
+        bottom: isMobile ? '24px' : '40px',
         left: '50%',
         transform: 'translateX(-50%)',
         zIndex: 5,
@@ -1430,15 +1567,15 @@ export default function WonderPen() {
       }}>
         <span style={{
           fontFamily: "'PP Neue Montreal', 'Inter', sans-serif",
-          fontSize: '13px',
+          fontSize: isMobile ? '10px' : '13px',
           fontWeight: 500,
-          letterSpacing: '4px',
+          letterSpacing: isMobile ? '3px' : '4px',
           textTransform: 'uppercase',
           color: '#777',
-        }}>Scroll to draw</span>
+        }}>{isMobile ? 'Scroll' : 'Scroll to draw'}</span>
         <div style={{
           width: '2px',
-          height: '40px',
+          height: isMobile ? '28px' : '40px',
           borderRadius: '1px',
           position: 'relative',
           overflow: 'hidden',
@@ -1471,11 +1608,11 @@ export default function WonderPen() {
         {/* Section Title */}
         <div style={{
           position: 'absolute',
-          top: '12vh',
+          top: isMobile ? '8vh' : '12vh',
           width: '100%',
           textAlign: 'center',
         }}>
-          <h2 style={{
+          <h2 className="wp-section-title" style={{
             fontFamily: "'PP Neue Montreal', 'Inter', sans-serif",
             fontSize: 'clamp(36px, 5vw, 56px)',
             fontWeight: 500,
@@ -1487,7 +1624,7 @@ export default function WonderPen() {
         </div>
 
         {/* Material Orbs Labels */}
-        <div style={{
+        <div className="wp-orbs-row" style={{
           position: 'absolute',
           bottom: '10vh',
           width: '100%',
@@ -1500,6 +1637,7 @@ export default function WonderPen() {
               key={mat.name}
               ref={el => orbButtonRefs.current[i] = el}
               onClick={() => switchMaterial(i)}
+              className="wp-orb-btn"
               style={{
                 pointerEvents: isInteractive ? 'auto' : 'none',
                 background: 'none',
@@ -1513,7 +1651,7 @@ export default function WonderPen() {
               }}
             >
               {/* Orb preview */}
-              <div style={{
+              <div className="wp-orb-circle" style={{
                 width: '48px',
                 height: '48px',
                 borderRadius: '50%',
@@ -1526,7 +1664,7 @@ export default function WonderPen() {
                 boxShadow: 'none',
                 transition: 'border 0.3s ease',
               }} />
-              <span style={{
+              <span className="wp-orb-label" style={{
                 fontFamily: "'PP Neue Montreal', 'Inter', sans-serif",
                 fontSize: '13px',
                 letterSpacing: '2px',
@@ -1540,8 +1678,28 @@ export default function WonderPen() {
           ))}
         </div>
 
-        {/* Hint Animation */}
-        {showHint && (
+        {/* Mobile selector label — persistent */}
+        {isMobile && (
+          <div style={{
+            position: 'absolute',
+            bottom: 'calc(14vh + 160px)',
+            width: '100%',
+            textAlign: 'center',
+          }}>
+            <p style={{
+              fontFamily: "'PP Neue Montreal', 'Inter', sans-serif",
+              fontSize: '11px',
+              color: '#666',
+              letterSpacing: '2px',
+              textTransform: 'uppercase',
+            }}>
+              Select your style
+            </p>
+          </div>
+        )}
+
+        {/* Hint Animation — hidden on mobile */}
+        {showHint && !isMobile && (
           <div style={{
             position: 'absolute',
             bottom: 'calc(10vh + 120px)',
@@ -1550,7 +1708,7 @@ export default function WonderPen() {
             opacity: hintFading ? 0 : 1,
             transition: 'opacity 1s ease-out',
           }}>
-            <p style={{
+            <p className="wp-hint-text" style={{
               fontFamily: "'PP Neue Montreal', 'Inter', sans-serif",
               fontSize: '13px',
               color: '#666',
@@ -1563,7 +1721,7 @@ export default function WonderPen() {
       </div>
 
       {/* Spacer for scroll distance — hero transition + interactive section */}
-      <div style={{ height: '400vh', position: 'relative', zIndex: 0, pointerEvents: 'none' }} />
+      <div style={{ height: isMobile ? '300vh' : '400vh', position: 'relative', zIndex: 0, pointerEvents: 'none' }} />
 
       {/* CTA Section */}
       <div style={{
@@ -1578,7 +1736,7 @@ export default function WonderPen() {
         padding: '40px',
         textAlign: 'center',
       }}>
-        <h2 style={{
+        <h2 className="wp-cta-title" style={{
           fontFamily: "'PP Neue Montreal', 'Inter', sans-serif",
           fontSize: 'clamp(32px, 5vw, 56px)',
           fontWeight: 500,
@@ -1588,7 +1746,7 @@ export default function WonderPen() {
         }}>
           Build something delightful.
         </h2>
-        <p style={{
+        <p className="wp-cta-sub" style={{
           fontFamily: "'PP Neue Montreal', 'Inter', sans-serif",
           fontSize: '16px',
           color: '#666',
@@ -1599,6 +1757,7 @@ export default function WonderPen() {
           Ships Spring 2027. Secure your spot.
         </p>
         <button
+          className="wp-cta-btn"
           style={{
             fontFamily: "'PP Neue Montreal', 'Inter', sans-serif",
             fontSize: '14px',
@@ -1626,7 +1785,7 @@ export default function WonderPen() {
       </div>
 
       {/* Footer */}
-      <footer style={{
+      <footer className="wp-footer" style={{
         position: 'relative',
         zIndex: 20,
         background: DARK_BG,
@@ -1634,7 +1793,7 @@ export default function WonderPen() {
         padding: '40px',
         textAlign: 'center',
       }}>
-        <div style={{
+        <div className="wp-footer-title" style={{
           fontFamily: "'PP Neue Montreal', 'Inter', sans-serif",
           fontWeight: 700,
           fontSize: '12px',
@@ -1645,7 +1804,7 @@ export default function WonderPen() {
         }}>
           Wonderstruck Studio
         </div>
-        <p style={{
+        <p className="wp-footer-copy" style={{
           fontFamily: "'PP Neue Montreal', 'Inter', sans-serif",
           fontSize: '12px',
           color: '#333',

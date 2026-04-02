@@ -60,3 +60,80 @@ body {
 ::selection {
   background: rgba(200, 200, 210, 0.3);
 }
+
+/* ─── Mobile Responsiveness ──────────────────────────────────────── */
+@media (max-width: 768px) {
+  /* Nav */
+  .wp-nav {
+    padding: 12px 16px !important;
+  }
+
+  /* Hero */
+  .wp-hero-title {
+    font-size: clamp(28px, 9vw, 42px) !important;
+    letter-spacing: -1px !important;
+    margin-bottom: 6px !important;
+  }
+  .wp-hero-sub {
+    font-size: 12px !important;
+    letter-spacing: 2px !important;
+  }
+
+  /* Interactive section title */
+  .wp-section-title {
+    font-size: clamp(28px, 8vw, 40px) !important;
+  }
+
+  /* Material orbs — 2 rows */
+  .wp-orbs-row {
+    gap: 12px 16px !important;
+    padding: 0 24px;
+    flex-wrap: wrap !important;
+    justify-content: center !important;
+    width: 100% !important;
+    left: 0 !important;
+    right: 0 !important;
+    bottom: 14vh !important;
+  }
+  .wp-orb-btn {
+    gap: 6px !important;
+    padding: 4px !important;
+    min-width: 0;
+  }
+  .wp-orb-circle {
+    width: 36px !important;
+    height: 36px !important;
+  }
+  .wp-orb-label {
+    font-size: 10px !important;
+    letter-spacing: 1px !important;
+  }
+
+  /* CTA section */
+  .wp-cta-title {
+    font-size: clamp(24px, 8vw, 40px) !important;
+  }
+  .wp-cta-sub {
+    font-size: 13px !important;
+  }
+  .wp-cta-btn {
+    font-size: 12px !important;
+    padding: 14px 28px !important;
+  }
+
+  /* Footer */
+  .wp-footer {
+    padding: 24px 16px !important;
+  }
+  .wp-footer-title {
+    font-size: 11px !important;
+  }
+  .wp-footer-copy {
+    font-size: 11px !important;
+  }
+
+  /* Draw hint */
+  .wp-hint-text {
+    font-size: 11px !important;
+  }
+}
