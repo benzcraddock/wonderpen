@@ -114,7 +114,9 @@ body {
     font-size: clamp(24px, 8vw, 40px) !important;
   }
   .wp-cta-sub {
-    font-size: 13px !important;
+    font-size: 11px !important;
+    letter-spacing: 1.5px !important;
+    white-space: nowrap;
   }
   .wp-cta-btn {
     font-size: 12px !important;
