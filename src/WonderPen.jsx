@@ -861,15 +861,15 @@ export default function WonderPen() {
           controls.autoRotate = false;
           pen.rotation.z = Math.PI;
           pen.rotation.x = Math.PI;
-          const interactiveScale = Math.min(0.65, window.innerHeight / 1300);
+          const interactiveScale = Math.min(0.55, window.innerHeight / 1600);
           pen.position.y = 25 - (1 - interactiveScale / 0.55) * 10;
-          pen.scale.set(interactiveScale, interactiveScale, interactiveScale);
           // Gentle levitation bob
           const bob = Math.sin(now * 0.002) * 1.5;
           pen.position.y += bob;
 
-          // Simple constant spin — same as hero (skip during material switch spin)
+          // Skip scale and rotation overrides during material switch animation
           if (!switchingRef.current) {
+            pen.scale.set(interactiveScale, interactiveScale, interactiveScale);
             const mdt = Math.min(wallDelta, 0.033);
             heroRotY -= THREE.MathUtils.degToRad(8.0) * mdt;
             pen.rotation.y = heroRotY;
