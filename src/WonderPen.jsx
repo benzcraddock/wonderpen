@@ -861,7 +861,7 @@ export default function WonderPen() {
           controls.autoRotate = false;
           pen.rotation.z = Math.PI;
           pen.rotation.x = Math.PI;
-          const interactiveScale = Math.min(0.55, window.innerHeight / 1600);
+          const interactiveScale = Math.min(0.65, window.innerHeight / 1300);
           pen.position.y = 25 - (1 - interactiveScale / 0.55) * 10;
           pen.scale.set(interactiveScale, interactiveScale, interactiveScale);
           // Gentle levitation bob
@@ -1069,6 +1069,7 @@ export default function WonderPen() {
     const startTime = performance.now();
     const duration = 1000;
     const startRotY = pen.rotation.y;
+    const startScale = pen.scale.x;
 
     // ── Spawn particles — subtle floating orbs ──
     const { scene } = sceneRef.current;
@@ -1122,6 +1123,11 @@ export default function WonderPen() {
       // ── 360 spin — ease-out for graceful deceleration ──
       const spinEase = 1 - Math.pow(1 - t, 3);
       pen.rotation.y = startRotY - spinEase * Math.PI * 2;
+
+      // ── Scale burst — grows then settles back ──
+      const scaleBurst = Math.sin(t * Math.PI) * 0.15;
+      const s = startScale + scaleBurst;
+      pen.scale.set(s, s, s);
 
       // ── Animate particles — gentle float up and fade ──
       const pdt = elapsed / 1000;
