@@ -177,12 +177,12 @@ function createPenGroup() {
   tip.position.y = -bodyLength / 2;
   group.add(tip);
 
-  // Silver metallic ring where tip meets body — flush and follows flat edge
-  const seamGeometry = new THREE.TorusGeometry(bodyRadius * 0.98, 0.2, 32, 64);
+  // Thin silver band where tip meets body — flush, barely visible
+  const seamGeometry = new THREE.TorusGeometry(bodyRadius * 0.97, 0.12, 16, 64);
   // Flatten the same side as the body
   const seamPos = seamGeometry.getAttribute('position');
   for (let i = 0; i < seamPos.count; i++) {
-    const y = seamPos.getY(i); // torus lies in XY before rotation, Y maps to pen Z after rotation
+    const y = seamPos.getY(i);
     if (y < -flatDepth) {
       seamPos.setY(i, -flatDepth);
     }
@@ -190,10 +190,10 @@ function createPenGroup() {
   seamGeometry.computeVertexNormals();
 
   const seamMaterial = new THREE.MeshStandardMaterial({
-    color: '#888890',
-    roughness: 0.25,
-    metalness: 0.85,
-    envMapIntensity: 0.8,
+    color: '#666670',
+    roughness: 0.3,
+    metalness: 0.7,
+    envMapIntensity: 0.5,
     side: THREE.DoubleSide,
   });
   const seam = new THREE.Mesh(seamGeometry, seamMaterial);
@@ -341,6 +341,7 @@ export default function WonderPen() {
   const [showHint, setShowHint] = useState(false);
   const [hintFading, setHintFading] = useState(false);
   const [heroLoaded, setHeroLoaded] = useState(false);
+  const [showScrollHint, setShowScrollHint] = useState(false);
   const [scrollY, setScrollY] = useState(0);
 
   // ─── Three.js Setup ─────────────────────────────────────────────
@@ -466,18 +467,22 @@ export default function WonderPen() {
 
     // Hero load-in animation
     const startTime = performance.now();
+    let heroLoadedFlag = false;
     const heroAnim = () => {
       const elapsed = (performance.now() - startTime) / 1000;
+      if (elapsed > 0.8 && !heroLoadedFlag) {
+        heroLoadedFlag = true;
+        setHeroLoaded(true);
+        setTimeout(() => setShowScrollHint(true), 600);
+      }
       if (elapsed < 2.5) {
         const t = Math.min(elapsed / 2.5, 1);
-        // cubic-bezier approximation ease-out
         const ease = 1 - Math.pow(1 - t, 3);
         const scale = 1.125 - 0.225 * ease;
         pen.scale.set(scale, scale, scale);
         requestAnimationFrame(heroAnim);
       } else {
         pen.scale.set(0.9, 0.9, 0.9);
-        setHeroLoaded(true);
       }
     };
     requestAnimationFrame(heroAnim);
@@ -580,7 +585,7 @@ export default function WonderPen() {
   useEffect(() => {
     const handleScroll = () => {
       const scrollY = window.scrollY;
-      const pinHeight = window.innerHeight * 1.5;
+      const pinHeight = window.innerHeight * 2.5;
 
       // Progress 0–1 over the pin distance
       const progress = Math.min(Math.max(scrollY / pinHeight, 0), 1);
@@ -588,7 +593,7 @@ export default function WonderPen() {
       setScrollY(progress);
 
       // Check if scrolled past interactive into CTA
-      const interactiveEnd = window.innerHeight * 3.2;
+      const interactiveEnd = window.innerHeight * 4.2;
 
       if (progress < 0.01) {
         setSection('hero');
@@ -697,7 +702,7 @@ export default function WonderPen() {
         const [ox, oy] = orbPositions[i];
         const dx = e.clientX - ox;
         const dy = e.clientY - oy;
-        if (Math.sqrt(dx * dx + dy * dy) < 20) {
+        if (Math.sqrt(dx * dx + dy * dy) < 40) {
           switchMaterial(i);
           return;
         }
@@ -721,6 +726,20 @@ export default function WonderPen() {
     let smoothPressure = 0.5;
 
     const onPointerMove = (e) => {
+      // Check if hovering near a selector — change cursor
+      const orbPositions = orbScreenPositions.current;
+      let nearOrb = false;
+      for (let i = 0; i < orbPositions.length; i++) {
+        const [ox, oy] = orbPositions[i];
+        const dx = e.clientX - ox;
+        const dy = e.clientY - oy;
+        if (Math.sqrt(dx * dx + dy * dy) < 40) {
+          nearOrb = true;
+          break;
+        }
+      }
+      canvas.style.cursor = nearOrb ? 'pointer' : 'crosshair';
+
       if (!drawStateRef.current.drawing) return;
 
       // Lerp toward cursor for smooth, slightly laggy feel
@@ -834,7 +853,10 @@ export default function WonderPen() {
       drawStateRef.current.drawing = false;
 
       const currentStroke = drawStateRef.current.currentStroke;
-      if (!currentStroke || currentStroke.length < 2) return;
+      if (!currentStroke || currentStroke.length < 3 || pathLength(currentStroke) < 15) {
+        drawStateRef.current.currentStroke = null;
+        return;
+      }
 
       // Save completed stroke with its color
       if (!drawStateRef.current.strokes) drawStateRef.current.strokes = [];
@@ -908,7 +930,7 @@ export default function WonderPen() {
           <path d="M26.4613 4.18621C22.7664 4.27512 16.5482 6.39306 10.1069 11.9512C4.95658 16.3796 1.74045 20.6537 0.95866 24.507C0.112664 28.7496 2.14035 31.5585 5.7057 32.2281C13.4233 33.6911 20.9381 27.2619 30.386 16.6451C41.2927 4.42479 47.9368 -0.32088 54.823 0.0167304C56.5443 0.101133 59.1262 0.72121 59.9643 2.73224C60.1389 3.18239 60.1322 4.31788 59.4011 4.28074C59.0541 4.31338 58.9325 3.76645 58.6644 3.21052C57.7361 1.04644 56.0284 0.668318 54.5527 0.595169C48.3074 0.287944 42.1612 6.88034 32.7562 17.7007C22.3046 29.6454 13.2926 34.3235 5.72034 32.9168C1.66497 32.0773 -0.602659 29.1581 0.1397 24.1221C0.711958 20.5052 2.97057 15.6908 8.94774 10.4658C15.7777 4.56996 23.3319 2.96632 27.1857 4.18396" fill={`rgb(${Math.round(10 + 240 * navProgress)}, ${Math.round(10 + 240 * navProgress)}, ${Math.round(10 + 240 * navProgress)})`} />
         </svg>
         <div style={{
-          fontFamily: "'PP Neue Montreal', sans-serif",
+          fontFamily: "'PP Neue Montreal', 'Inter', sans-serif",
           fontWeight: 500,
           fontSize: '14px',
           letterSpacing: '1px',
@@ -928,9 +950,7 @@ export default function WonderPen() {
           width: '100vw',
           height: '100vh',
           zIndex: 1,
-          opacity: section === 'cta' ? 0 : 1,
-          transition: 'opacity 0.5s ease',
-          pointerEvents: section === 'cta' ? 'none' : 'auto',
+          pointerEvents: isCta ? 'none' : 'auto',
         }}
       />
 
@@ -943,7 +963,7 @@ export default function WonderPen() {
           left: 0,
           width: '100vw',
           height: '100vh',
-          zIndex: isInteractive ? 10 : -1,
+          zIndex: isInteractive ? 200 : -1,
           pointerEvents: isInteractive ? 'auto' : 'none',
           cursor: isInteractive ? 'crosshair' : 'default',
         }}
@@ -967,7 +987,7 @@ export default function WonderPen() {
         transition: 'opacity 0.1s linear',
       }}>
         <h1 style={{
-          fontFamily: "'PP Neue Montreal', sans-serif",
+          fontFamily: "'PP Neue Montreal', 'Inter', sans-serif",
           fontSize: 'clamp(48px, 8vw, 96px)',
           fontWeight: 500,
           color: '#0A0A0A',
@@ -975,19 +995,19 @@ export default function WonderPen() {
           marginBottom: '12px',
           opacity: heroLoaded ? 1 : 0,
           transform: heroLoaded ? 'translateY(0)' : 'translateY(20px)',
-          transition: 'opacity 1s ease-out 0.5s, transform 1s ease-out 0.5s',
+          transition: 'opacity 0.6s ease-out, transform 0.6s ease-out',
         }}>
           Designed to design.
         </h1>
         <p style={{
-          fontFamily: "'PP Neue Montreal', sans-serif",
+          fontFamily: "'PP Neue Montreal', 'Inter', sans-serif",
           fontSize: '18px',
           fontWeight: 400,
           color: '#666',
           letterSpacing: '3px',
           textTransform: 'uppercase',
           opacity: heroLoaded ? 1 : 0,
-          transition: 'opacity 1s ease-out 1s',
+          transition: 'opacity 0.6s ease-out 0.2s',
         }}>
           From the team at Wonderstruck Studio
         </p>
@@ -1000,7 +1020,8 @@ export default function WonderPen() {
         left: '50%',
         transform: 'translateX(-50%)',
         zIndex: 5,
-        opacity: heroLoaded && scrollProgress < 0.8 ? Math.max(0, 1 - scrollProgress * 1.5) : 0,
+        opacity: showScrollHint ? Math.max(0, 1 - scrollProgress * 3) : 0,
+        transition: 'opacity 1s ease-out',
         pointerEvents: 'none',
         display: 'flex',
         flexDirection: 'column',
@@ -1008,7 +1029,7 @@ export default function WonderPen() {
         gap: '8px',
       }}>
         <span style={{
-          fontFamily: "'PP Neue Montreal', sans-serif",
+          fontFamily: "'PP Neue Montreal', 'Inter', sans-serif",
           fontSize: '13px',
           fontWeight: 500,
           letterSpacing: '4px',
@@ -1055,7 +1076,7 @@ export default function WonderPen() {
           textAlign: 'center',
         }}>
           <h2 style={{
-            fontFamily: "'PP Neue Montreal', sans-serif",
+            fontFamily: "'PP Neue Montreal', 'Inter', sans-serif",
             fontSize: 'clamp(36px, 5vw, 56px)',
             fontWeight: 500,
             color: '#FAFAFA',
@@ -1104,7 +1125,7 @@ export default function WonderPen() {
                 transition: 'border 0.3s ease',
               }} />
               <span style={{
-                fontFamily: "'PP Neue Montreal', sans-serif",
+                fontFamily: "'PP Neue Montreal', 'Inter', sans-serif",
                 fontSize: '13px',
                 letterSpacing: '2px',
                 textTransform: 'uppercase',
@@ -1128,7 +1149,7 @@ export default function WonderPen() {
             transition: 'opacity 1s ease-out',
           }}>
             <p style={{
-              fontFamily: "'PP Neue Montreal', sans-serif",
+              fontFamily: "'PP Neue Montreal', 'Inter', sans-serif",
               fontSize: '13px',
               color: '#666',
               letterSpacing: '1px',
@@ -1140,7 +1161,7 @@ export default function WonderPen() {
       </div>
 
       {/* Spacer for scroll distance — hero transition + interactive section */}
-      <div style={{ height: '350vh', position: 'relative', zIndex: 0, background: DARK_BG }} />
+      <div style={{ height: '500vh', position: 'relative', zIndex: 0, pointerEvents: 'none' }} />
 
       {/* CTA Section */}
       <div style={{
@@ -1156,17 +1177,17 @@ export default function WonderPen() {
         textAlign: 'center',
       }}>
         <h2 style={{
-          fontFamily: "'PP Neue Montreal', sans-serif",
+          fontFamily: "'PP Neue Montreal', 'Inter', sans-serif",
           fontSize: 'clamp(32px, 5vw, 56px)',
           fontWeight: 500,
           color: '#FAFAFA',
           letterSpacing: '-1px',
           marginBottom: '16px',
         }}>
-          The future of creative tools.
+          Build something delightful.
         </h2>
         <p style={{
-          fontFamily: "'PP Neue Montreal', sans-serif",
+          fontFamily: "'PP Neue Montreal', 'Inter', sans-serif",
           fontSize: '16px',
           color: '#666',
           letterSpacing: '2px',
@@ -1177,7 +1198,7 @@ export default function WonderPen() {
         </p>
         <button
           style={{
-            fontFamily: "'PP Neue Montreal', sans-serif",
+            fontFamily: "'PP Neue Montreal', 'Inter', sans-serif",
             fontSize: '14px',
             fontWeight: 500,
             letterSpacing: '2px',
@@ -1212,7 +1233,7 @@ export default function WonderPen() {
         textAlign: 'center',
       }}>
         <div style={{
-          fontFamily: "'PP Neue Montreal', sans-serif",
+          fontFamily: "'PP Neue Montreal', 'Inter', sans-serif",
           fontWeight: 700,
           fontSize: '12px',
           letterSpacing: '2px',
@@ -1223,35 +1244,13 @@ export default function WonderPen() {
           Wonderstruck Studio
         </div>
         <p style={{
-          fontFamily: "'PP Neue Montreal', sans-serif",
+          fontFamily: "'PP Neue Montreal', 'Inter', sans-serif",
           fontSize: '12px',
           color: '#333',
           marginBottom: '12px',
         }}>
           &copy; 2026 Wonderstruck Studio. All rights reserved.
         </p>
-        <div style={{
-          display: 'flex',
-          justifyContent: 'center',
-          gap: '24px',
-        }}>
-          {['Privacy', 'Terms', 'Contact'].map(link => (
-            <a key={link} href="#" style={{
-              fontFamily: "'PP Neue Montreal', sans-serif",
-              fontSize: '11px',
-              color: '#444',
-              textDecoration: 'none',
-              letterSpacing: '1px',
-              textTransform: 'uppercase',
-              transition: 'color 0.2s ease',
-            }}
-              onMouseEnter={(e) => e.target.style.color = '#999'}
-              onMouseLeave={(e) => e.target.style.color = '#444'}
-            >
-              {link}
-            </a>
-          ))}
-        </div>
       </footer>
 
       {/* CSS Animations */}

@@ -44,10 +44,10 @@ html {
 }
 
 body {
-  font-family: 'PP Neue Montreal', -apple-system, BlinkMacSystemFont, sans-serif;
+  font-family: 'PP Neue Montreal', 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
-  background: #0A0A0A;
+  background: #FAFAFA;
   color: #0A0A0A;
   overflow-x: hidden;
   margin: 0;
