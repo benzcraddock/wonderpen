@@ -1785,6 +1785,7 @@ export default function WonderPen() {
             e.target.style.background = 'transparent';
             e.target.style.color = '#FAFAFA';
           }}
+          onClick={() => window.open('https://youtu.be/iik25wqIuFo?si=vBS2EGmee8Vs8BiE', '_blank')}
         >
           Pre-order WonderPen
         </button>
