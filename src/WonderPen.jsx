@@ -538,6 +538,7 @@ export default function WonderPen() {
 
     // Ambient rotation — eases to pause on hover, supports flick-to-spin
     let heroRotY = 0;
+    let returnFromInteractiveTime = 0;
     let lastTime = performance.now();
     let prevProgress = 0;
     let hoveringPen = false;
@@ -607,8 +608,7 @@ export default function WonderPen() {
 
         // Scroll-driven transforms
         const rotZ = -Math.PI / 2 + THREE.MathUtils.degToRad(15) * progress;
-        const scale = 0.9 - 0.2 * progress;
-        // Lerp from hero position (-20) to center (0)
+        const scale = 0.9 - 0.13 * progress;
         const yOffset = -20 + 20 * progress;
 
         pen.rotation.z = rotZ;
@@ -631,7 +631,10 @@ export default function WonderPen() {
           const timeSinceLoad = (now - startTime) / 1000;
           const rotationDelay = 2.0; // approx drop settle time
           const rotRampUp = Math.max(0, Math.min((timeSinceLoad - rotationDelay) / 0.5, 1));
-          const ambientRate = -THREE.MathUtils.degToRad(8.0) * dt * rotRampUp;
+          // Also ease in after returning from interactive section
+          const timeSinceReturn = returnFromInteractiveTime > 0 ? (now - returnFromInteractiveTime) / 1000 : 999;
+          const returnRampUp = Math.max(0, Math.min(timeSinceReturn / 1.5, 1));
+          const ambientRate = -THREE.MathUtils.degToRad(8.0) * dt * rotRampUp * returnRampUp;
 
           if (isDraggingPen) {
             // While dragging — directly follow mouse via accumulated deltas
@@ -662,15 +665,22 @@ export default function WonderPen() {
           pen.rotation.y = heroRotY;
         }
 
-        // When returning from interactive, reset OrbitControls and restore pen orientation
+        // When returning from interactive, capture pen rotation and reset controls
         if (prevProgress >= 1 && progress < 1) {
+          heroRotY = pen.rotation.y;
           controls.reset();
-          pen.rotation.x = Math.PI;
+          returnFromInteractiveTime = now;
+        }
+
+        // Always set Y rotation during transition so it doesn't stick at OrbitControls value
+        if (progress >= 0.05) {
           pen.rotation.y = heroRotY;
         }
 
-        // Background color lerp
-        const bgColor = new THREE.Color(LIGHT_BG).lerp(new THREE.Color(DARK_BG), progress);
+        // Background color lerp — accelerated so grey zone is brief
+        const bgProgress = Math.min(progress * 1.5, 1);
+        const bgEase = bgProgress * bgProgress;
+        const bgColor = new THREE.Color(LIGHT_BG).lerp(new THREE.Color(DARK_BG), bgEase);
         scene.background = bgColor;
       } else {
         // Interactive state
@@ -681,8 +691,10 @@ export default function WonderPen() {
         // Center pen in viewport for interactive section
         pen.position.y = 0;
         pen.rotation.z = -Math.PI / 2 + THREE.MathUtils.degToRad(15);
-        const interactiveScale = 0.7;
+        const interactiveScale = 0.77;
         pen.scale.set(interactiveScale, interactiveScale, interactiveScale);
+
+        scene.background = new THREE.Color(DARK_BG);
 
         // Update orb screen positions from DOM buttons for draw detection
         orbScreenPositions.current = orbButtonRefs.current.map(el => {
@@ -691,7 +703,6 @@ export default function WonderPen() {
           return [rect.left + rect.width / 2, rect.top + rect.height / 2];
         });
 
-        scene.background = new THREE.Color(DARK_BG);
       }
 
       prevProgress = progress;
@@ -723,7 +734,7 @@ export default function WonderPen() {
   useEffect(() => {
     const handleScroll = () => {
       const scrollY = window.scrollY;
-      const pinHeight = window.innerHeight * 2.5;
+      const pinHeight = window.innerHeight * 1.5;
 
       // Progress 0–1 over the pin distance
       const progress = Math.min(Math.max(scrollY / pinHeight, 0), 1);
@@ -731,7 +742,11 @@ export default function WonderPen() {
       setScrollY(progress);
 
       // Check if scrolled past interactive into CTA
-      const interactiveEnd = window.innerHeight * 4.2;
+      const interactiveEnd = window.innerHeight * 3.5;
+      // Track progress within interactive section (0-1)
+      const interactiveStart = pinHeight;
+      const interactiveProgress = Math.min(Math.max((scrollY - interactiveStart) / (interactiveEnd - interactiveStart), 0), 1);
+      scrollStateRef.current.interactiveProgress = interactiveProgress;
 
       if (progress < 0.01) {
         setSection('hero');
@@ -1041,9 +1056,9 @@ export default function WonderPen() {
   const isInteractive = section === 'interactive';
   const isCta = section === 'cta';
   const heroOpacity = section === 'hero' ? 1 : Math.max(0, 1 - scrollProgress * 5);
-  const interactiveOpacity = isInteractive ? 1 : 0;
+  const interactiveOpacity = isInteractive ? 1 : Math.max(0, (scrollProgress - 0.85) * 6.67);
   // Nav color transition — only changes once fully in interactive/dark
-  const navProgress = isInteractive || isCta ? 1 : Math.min(Math.max((scrollProgress - 0.9) * 10, 0), 1);
+  const navProgress = isInteractive || isCta ? 1 : Math.min(Math.max((scrollProgress - 0.85) * 6.67, 0), 1);
 
   return (
     <div style={{ position: 'relative' }}>
@@ -1292,14 +1307,14 @@ export default function WonderPen() {
               color: '#666',
               letterSpacing: '1px',
             }}>
-              Draw around a finish to select it
+              Circle your style
             </p>
           </div>
         )}
       </div>
 
       {/* Spacer for scroll distance — hero transition + interactive section */}
-      <div style={{ height: '500vh', position: 'relative', zIndex: 0, pointerEvents: 'none' }} />
+      <div style={{ height: '400vh', position: 'relative', zIndex: 0, pointerEvents: 'none' }} />
 
       {/* CTA Section */}
       <div style={{
