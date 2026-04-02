@@ -7,9 +7,10 @@ const MATERIALS = [
   { name: 'Onyx', color: '#1A1A1A', roughness: 0.8, metalness: 0.2, logoColor: null },
   { name: 'Bone', color: '#E5E0DA', roughness: 0.82, metalness: 0.08, logoColor: null },
   { name: 'Slate', color: '#4A5568', roughness: 0.78, metalness: 0.15, logoColor: null },
-  { name: 'Midnight', color: '#1A1F2E', roughness: 0.78, metalness: 0.18, logoColor: null },
+  { name: 'Night', color: '#1A1F2E', roughness: 0.78, metalness: 0.18, logoColor: null },
   { name: 'Moss', color: '#3D4A3E', roughness: 0.82, metalness: 0.12, logoColor: null },
   { name: 'No. 2', color: '#DAA520', roughness: 0.88, metalness: 0.05, logoColor: 'rgba(180, 30, 30, 0.9)', tipColor: '#C4A87C' },
+  { name: 'Holo', color: '#C0C0C8', roughness: 0.1, metalness: 0.95, logoColor: null, holographic: true },
 ];
 
 const DARK_BG = '#0A0A0A';
@@ -181,29 +182,32 @@ function createPenGroup() {
   tip.position.y = -bodyLength / 2;
   group.add(tip);
 
-  // Thin silver band where tip meets body — flush, barely visible
-  const seamGeometry = new THREE.TorusGeometry(bodyRadius * 0.97, 0.12, 16, 64);
+  // Silver band where tip meets body — exact same radius, flush
+  const bandHeight = 1.275;
+  const seamGeometry = new THREE.CylinderGeometry(bodyRadius, bodyRadius, bandHeight, 48, 1, true);
   // Flatten the same side as the body
   const seamPos = seamGeometry.getAttribute('position');
   for (let i = 0; i < seamPos.count; i++) {
-    const y = seamPos.getY(i);
-    if (y < -flatDepth) {
-      seamPos.setY(i, -flatDepth);
+    const z = seamPos.getZ(i);
+    if (z < -flatDepth) {
+      seamPos.setZ(i, -flatDepth);
     }
   }
   seamGeometry.computeVertexNormals();
 
   const seamMaterial = new THREE.MeshStandardMaterial({
-    color: '#666670',
-    roughness: 0.3,
-    metalness: 0.7,
-    envMapIntensity: 0.5,
-    side: THREE.DoubleSide,
+    color: '#D0D0D8',
+    roughness: 0.03,
+    metalness: 1.0,
+    envMapIntensity: 2.0,
+    side: THREE.FrontSide,
+    polygonOffset: true,
+    polygonOffsetFactor: -2,
+    polygonOffsetUnits: -2,
   });
   const seam = new THREE.Mesh(seamGeometry, seamMaterial);
   seam.name = 'seam';
-  seam.position.y = -bodyLength / 2;
-  seam.rotation.x = Math.PI / 2;
+  seam.position.y = -bodyLength / 2 + bandHeight * 0.3;
   group.add(seam);
 
   // Wonderstruck logo branding — SVG drawn onto canvas texture
@@ -248,9 +252,9 @@ function createPenGroup() {
     transparent: true,
     depthWrite: false,
     side: THREE.DoubleSide,
-    metalness: 0.9,
-    roughness: 0.15,
-    envMapIntensity: 1.5,
+    metalness: 1.0,
+    roughness: 0.03,
+    envMapIntensity: 2.0,
     polygonOffset: true,
     polygonOffsetFactor: -1,
     polygonOffsetUnits: -1,
@@ -263,6 +267,7 @@ function createPenGroup() {
   brand.position.set(0, bodyLength / 2 - 12, -(flatDepth + 0.3));
   brand.rotation.z = -Math.PI / 2;
   group.add(brand);
+
 
   // Rotate pen to horizontal orientation, flat/logo side facing camera, tip left
   group.rotation.z = -Math.PI / 2;
@@ -345,7 +350,11 @@ export default function WonderPen() {
   const orbScreenPositions = useRef([]);
   const orbButtonRefs = useRef([]);
 
-  const [activeMaterial, setActiveMaterial] = useState(0);
+  const [activeMaterial, setActiveMaterial] = useState(() => {
+    const saved = localStorage.getItem('wonderpen-material');
+    const idx = saved !== null ? parseInt(saved, 10) : 0;
+    return idx >= 0 && idx < MATERIALS.length ? idx : 0;
+  });
   const [section, setSection] = useState('hero'); // hero | transition | interactive
   const [showHint, setShowHint] = useState(false);
   const [hintFading, setHintFading] = useState(false);
@@ -454,6 +463,11 @@ export default function WonderPen() {
     pen.position.y = -20;
     scene.add(pen);
 
+    // Specular highlight light — orbits the pen in interactive section
+    const specLight = new THREE.PointLight(0xffffff, 0, 300);
+    specLight.position.set(50, 0, 100);
+    scene.add(specLight);
+
     // Orb group placeholder (no 3D orbs, using UI buttons only)
     const orbGroup = new THREE.Group();
     orbGroup.visible = false;
@@ -473,6 +487,43 @@ export default function WonderPen() {
 
     // Store refs
     sceneRef.current = { scene, camera, renderer, pen, controls, orbs, orbGroup, envMap };
+
+    // Apply saved material on load
+    const savedIdx = parseInt(localStorage.getItem('wonderpen-material') || '0', 10);
+    if (savedIdx > 0 && savedIdx < MATERIALS.length) {
+      const mat = MATERIALS[savedIdx];
+      const targetColor = new THREE.Color(mat.color);
+      const tipColor = mat.tipColor ? new THREE.Color(mat.tipColor) : targetColor;
+      const baseColor = new THREE.Color(mat.color);
+      const lum = baseColor.r * 0.299 + baseColor.g * 0.587 + baseColor.b * 0.114;
+      const seamColor = lum > 0.4 ? new THREE.Color('#555560') : new THREE.Color('#999AA0');
+      pen.traverse((child) => {
+        if (child.isMesh && child.name === 'seam') {
+          child.material.color.copy(seamColor);
+        } else if (child.isMesh && child.name !== 'brand') {
+          const target = child.name === 'tip' && mat.tipColor ? tipColor : targetColor;
+          child.material.color.copy(target);
+          child.material.roughness = mat.roughness;
+          child.material.metalness = mat.metalness;
+        }
+      });
+      updateBrandLogo(pen, mat);
+      scrollStateRef.current.activeMaterial = savedIdx;
+
+      // Apply holographic properties
+      if (mat.holographic) {
+        pen.traverse((child) => {
+          if (child.isMesh && child.name !== 'seam' && child.name !== 'brand' && child.material.isMeshPhysicalMaterial) {
+            child.material.iridescence = 1.0;
+            child.material.iridescenceIOR = 2.0;
+            child.material.iridescenceThicknessRange = [100, 1000];
+            child.material.clearcoat = 1.0;
+            child.material.clearcoatRoughness = 0.02;
+            child.material.envMapIntensity = 1.5;
+          }
+        });
+      }
+    }
 
     // Hero load-in animation — physics-based drop with bounce
     const startTime = performance.now();
@@ -687,6 +738,9 @@ export default function WonderPen() {
           pen.rotation.y = heroRotY;
         }
 
+        // Turn off specular light in hero/transition
+        specLight.intensity = 0;
+
         // Background color lerp — accelerated so grey zone is brief
         const bgProgress = Math.min(progress * 1.5, 1);
         const bgEase = bgProgress * bgProgress;
@@ -706,6 +760,15 @@ export default function WonderPen() {
 
         scene.background = new THREE.Color(DARK_BG);
 
+        // Orbiting specular light to catch metallic surfaces
+        specLight.intensity = 3;
+        const lightAngle = now * 0.001;
+        specLight.position.set(
+          Math.cos(lightAngle) * 80,
+          Math.sin(lightAngle * 0.7) * 30,
+          Math.sin(lightAngle) * 80 + 50
+        );
+
         // Update orb screen positions from DOM buttons for draw detection
         orbScreenPositions.current = orbButtonRefs.current.map(el => {
           if (!el) return [0, 0];
@@ -714,6 +777,25 @@ export default function WonderPen() {
         });
 
       }
+
+      // Holographic effects — hue cycle, emissive pulse, iridescence ripple
+      const currentMat = MATERIALS[scrollStateRef.current.activeMaterial || 0];
+      if (currentMat && currentMat.holographic) {
+        const t = now * 0.001;
+        const hue = (t * 0.15) % 1; // faster hue cycle
+        const emissivePulse = (Math.sin(t * 2) * 0.5 + 0.5) * 0.08; // subtle breathing glow
+        const thicknessShift = Math.sin(t * 0.8) * 200 + 550; // ripple iridescence bands
+
+        pen.traverse((child) => {
+          if (child.isMesh && child.name !== 'seam' && child.name !== 'brand' && child.material.isMeshPhysicalMaterial) {
+            child.material.color.setHSL(hue, 0.2, 0.78);
+            child.material.emissive.setHSL(hue, 0.4, 0.5);
+            child.material.emissiveIntensity = emissivePulse;
+            child.material.iridescenceThicknessRange = [thicknessShift - 200, thicknessShift + 200];
+          }
+        });
+      }
+
 
       prevProgress = progress;
       controls.update();
@@ -789,6 +871,8 @@ export default function WonderPen() {
   const switchMaterial = useCallback((index) => {
     if (index === activeMaterial) return;
     setActiveMaterial(index);
+    scrollStateRef.current.activeMaterial = index;
+    localStorage.setItem('wonderpen-material', index);
 
     const { pen, orbs } = sceneRef.current;
     if (!pen) return;
@@ -848,8 +932,31 @@ export default function WonderPen() {
       if (t < 1) {
         requestAnimationFrame(animateSwitch);
       } else {
-        parts.forEach(({ mesh }) => {
+        parts.forEach(({ mesh, isSeam }) => {
           mesh.material.emissiveIntensity = 0;
+          // Apply/remove iridescence for holographic material
+          if (!isSeam && mesh.material.isMeshPhysicalMaterial) {
+            if (mat.holographic) {
+              mesh.material.iridescence = 1.0;
+              mesh.material.iridescenceIOR = 2.0;
+              mesh.material.iridescenceThicknessRange = [100, 1000];
+              mesh.material.clearcoat = 1.0;
+              mesh.material.clearcoatRoughness = 0.02;
+              mesh.material.envMapIntensity = 1.5;
+              mesh.material.transmission = 0;
+              mesh.material.transparent = false;
+              mesh.material.opacity = 1;
+            } else {
+              mesh.material.iridescence = 0;
+              mesh.material.clearcoat = 0.15;
+              mesh.material.clearcoatRoughness = 0.6;
+              mesh.material.envMapIntensity = 0.4;
+              mesh.material.emissiveIntensity = 0;
+              mesh.material.transmission = 0;
+              mesh.material.transparent = false;
+              mesh.material.opacity = 1;
+            }
+          }
         });
       }
     };
@@ -955,7 +1062,7 @@ export default function WonderPen() {
 
     const drawStroke = (stroke, now) => {
       const points = stroke.points || stroke;
-      const matColor = stroke.color || MATERIALS[activeMaterial].color;
+      const isHolo = stroke.holographic;
       if (points.length < 2) return;
 
       // Fade whole stroke based on when drawing stopped (last point age)
@@ -973,6 +1080,16 @@ export default function WonderPen() {
         ctx.quadraticCurveTo(points[i][0], points[i][1], midX, midY);
       }
       ctx.lineTo(last[0], last[1]);
+
+      // Holographic strokes get subtle shifting pastel color
+      let matColor;
+      if (isHolo) {
+        const hue = ((now * 0.00008) + age * 0.0002) % 1;
+        const h = Math.round(hue * 360);
+        matColor = `hsl(${h}, 25%, 78%)`;
+      } else {
+        matColor = stroke.color || MATERIALS[activeMaterial].color;
+      }
 
       ctx.globalAlpha = alpha;
       ctx.strokeStyle = matColor;
@@ -1038,6 +1155,7 @@ export default function WonderPen() {
       drawStateRef.current.strokes.push({
         points: [...currentStroke],
         color: MATERIALS[activeMaterial].color,
+        holographic: !!MATERIALS[activeMaterial].holographic,
       });
 
       // Check for selection
@@ -1292,7 +1410,9 @@ export default function WonderPen() {
                 width: '48px',
                 height: '48px',
                 borderRadius: '50%',
-                background: mat.color,
+                background: mat.holographic
+                  ? 'linear-gradient(135deg, #C0C0C8 0%, #E8D0E8 25%, #D0E0F0 50%, #E0E8D0 75%, #C0C0C8 100%)'
+                  : mat.color,
                 border: i === activeMaterial
                   ? '2px solid rgba(255,255,255,0.5)'
                   : '2px solid rgba(255,255,255,0.1)',
