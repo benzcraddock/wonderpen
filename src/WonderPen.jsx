@@ -965,7 +965,7 @@ export default function WonderPen() {
       }
 
       // Check if scrolled past interactive into CTA
-      const interactiveEnd = window.innerHeight * 3.5;
+      const interactiveEnd = window.innerWidth <= 768 ? window.innerHeight * 4.5 : window.innerHeight * 3.5;
       // Track progress within interactive section (0-1)
       const interactiveStart = pinHeight;
       const interactiveProgress = Math.min(Math.max((scrollY - interactiveStart) / (interactiveEnd - interactiveStart), 0), 1);
@@ -1727,7 +1727,7 @@ export default function WonderPen() {
       </div>
 
       {/* Spacer for scroll distance — hero transition + interactive section */}
-      <div style={{ height: isMobile ? '300vh' : '400vh', position: 'relative', zIndex: 0, pointerEvents: 'none' }} />
+      <div style={{ height: isMobile ? '500vh' : '400vh', position: 'relative', zIndex: 0, pointerEvents: 'none' }} />
 
       {/* CTA Section */}
       <div style={{
