@@ -487,10 +487,57 @@ export default function WonderPen() {
     };
     requestAnimationFrame(heroAnim);
 
-    // Ambient rotation — always ticks so speed is consistent
+    // Ambient rotation — eases to pause on hover, supports flick-to-spin
     let heroRotY = 0;
     let lastTime = performance.now();
     let prevProgress = 0;
+    let hoveringPen = false;
+    let rotationSpeed = 1; // 0 = paused, 1 = full speed
+    let angularVelocity = 0; // user-applied spin velocity (rad/s)
+    let isDraggingPen = false;
+    let lastDragX = 0;
+    const dragHistory = []; // track recent drag deltas for smooth release velocity
+    const raycaster = new THREE.Raycaster();
+    const mouse = new THREE.Vector2();
+
+    const onMouseMove = (e) => {
+      mouse.x = (e.clientX / window.innerWidth) * 2 - 1;
+      mouse.y = -(e.clientY / window.innerHeight) * 2 + 1;
+
+      if (isDraggingPen) {
+        const dx = e.clientX - lastDragX;
+        lastDragX = e.clientX;
+        // Store recent deltas for averaged release velocity
+        dragHistory.push({ dx, t: performance.now() });
+        // Keep only last 80ms of history
+        const cutoff = performance.now() - 80;
+        while (dragHistory.length > 0 && dragHistory[0].t < cutoff) dragHistory.shift();
+      }
+    };
+    renderer.domElement.addEventListener('mousemove', onMouseMove);
+
+    const onMouseDown = (e) => {
+      if (hoveringPen && scrollStateRef.current.progress < 0.05) {
+        isDraggingPen = true;
+        lastDragX = e.clientX;
+        renderer.domElement.style.cursor = 'grabbing';
+      }
+    };
+    const onMouseUp = () => {
+      if (isDraggingPen) {
+        isDraggingPen = false;
+        renderer.domElement.style.cursor = hoveringPen ? 'grab' : 'default';
+        // Average recent drag deltas for smooth release velocity
+        if (dragHistory.length > 1) {
+          const totalDx = dragHistory.reduce((sum, d) => sum + d.dx, 0);
+          const avgDx = totalDx / dragHistory.length;
+          angularVelocity = Math.max(-0.15, Math.min(0.15, avgDx * 0.004)); // capped
+        }
+        dragHistory.length = 0;
+      }
+    };
+    renderer.domElement.addEventListener('mousedown', onMouseDown);
+    window.addEventListener('mouseup', onMouseUp);
 
     // Animation loop
     let animFrame;
@@ -520,10 +567,44 @@ export default function WonderPen() {
         pen.position.y = yOffset;
         pen.scale.set(scale, scale, scale);
 
-        // Ambient rotation only in hero
+        // Ambient rotation only in hero — hover pause + flick-to-spin
         if (progress < 0.05) {
+          raycaster.setFromCamera(mouse, camera);
+          const intersects = raycaster.intersectObjects(pen.children, true);
+          hoveringPen = intersects.length > 0;
+          if (!isDraggingPen) {
+            renderer.domElement.style.cursor = hoveringPen ? 'grab' : 'default';
+          }
+
           const dt = Math.min(wallDelta, 0.033);
-          heroRotY -= THREE.MathUtils.degToRad(8.0) * dt;
+          const ambientRate = -THREE.MathUtils.degToRad(8.0) * dt;
+
+          if (isDraggingPen) {
+            // While dragging — directly follow mouse via accumulated deltas
+            const totalDx = dragHistory.reduce((sum, d) => sum + d.dx, 0);
+            const smoothDx = totalDx / Math.max(dragHistory.length, 1);
+            heroRotY += smoothDx * 0.004;
+          } else {
+            // Frame-rate independent friction: decay per second, not per frame
+            const friction = Math.pow(0.3, dt); // ~70% decay per second
+            angularVelocity *= friction;
+
+            // Smoothly blend user velocity toward ambient speed
+            const ambientVel = hoveringPen ? 0 : ambientRate;
+            const blendRate = 1 - Math.pow(0.1, dt); // smooth convergence
+            const effectiveVel = angularVelocity + ambientVel;
+
+            // Once user velocity is negligible, fully use ambient
+            if (Math.abs(angularVelocity) < 0.0005) {
+              angularVelocity = 0;
+              const targetSpeed = hoveringPen ? 0 : 1;
+              rotationSpeed += (targetSpeed - rotationSpeed) * 0.04;
+              heroRotY += ambientRate * rotationSpeed;
+            } else {
+              heroRotY += effectiveVel;
+            }
+          }
+
           pen.rotation.y = heroRotY;
         }
 
@@ -576,6 +657,9 @@ export default function WonderPen() {
     return () => {
       cancelAnimationFrame(animFrame);
       window.removeEventListener('resize', handleResize);
+      renderer.domElement.removeEventListener('mousemove', onMouseMove);
+      renderer.domElement.removeEventListener('mousedown', onMouseDown);
+      window.removeEventListener('mouseup', onMouseUp);
       renderer.dispose();
       container.removeChild(renderer.domElement);
     };
