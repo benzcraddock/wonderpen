@@ -1473,7 +1473,7 @@ export default function WonderPen() {
           width: '100vw',
           height: '100vh',
           zIndex: 1,
-          pointerEvents: isCta ? 'none' : 'auto',
+          pointerEvents: isCta || isMobile ? 'none' : 'auto',
         }}
       />
 
@@ -1489,7 +1489,7 @@ export default function WonderPen() {
           zIndex: isInteractive && !isMobile ? 200 : -1,
           pointerEvents: isInteractive && !isMobile ? 'auto' : 'none',
           cursor: isInteractive ? 'crosshair' : 'default',
-          touchAction: 'none',
+          touchAction: isMobile ? 'auto' : 'none',
         }}
       />
 
