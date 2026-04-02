@@ -465,24 +465,73 @@ export default function WonderPen() {
     // Store refs
     sceneRef.current = { scene, camera, renderer, pen, controls, orbs, orbGroup, envMap };
 
-    // Hero load-in animation
+    // Hero load-in animation — physics-based drop with bounce
     const startTime = performance.now();
     let heroLoadedFlag = false;
+    let heroAnimDone = false;
+    const dropStartY = 110;
+    const dropEndY = -20;
+    const restitution = 0.3;
+
+    let dropY = dropStartY;
+    let dropVelocity = 0;
+    const gravity = 900;
+    let bounceCount = 0;
+    let settled = false;
+    let impactWobble = 0;
+    let wobbleDecay = 0;
+    let lastDropTime = startTime;
+
+    pen.position.y = dropStartY;
+    pen.scale.set(0.9, 0.9, 0.9);
+
     const heroAnim = () => {
-      const elapsed = (performance.now() - startTime) / 1000;
-      if (elapsed > 0.8 && !heroLoadedFlag) {
+      const nowMs = performance.now();
+      const dt = Math.min((nowMs - lastDropTime) / 1000, 0.033);
+      lastDropTime = nowMs;
+      const elapsed = (nowMs - startTime) / 1000;
+
+      if (elapsed > 0.5 && !heroLoadedFlag) {
         heroLoadedFlag = true;
         setHeroLoaded(true);
         setTimeout(() => setShowScrollHint(true), 600);
       }
-      if (elapsed < 2.5) {
-        const t = Math.min(elapsed / 2.5, 1);
-        const ease = 1 - Math.pow(1 - t, 3);
-        const scale = 1.125 - 0.225 * ease;
-        pen.scale.set(scale, scale, scale);
+
+      if (!settled) {
+        const substeps = 4;
+        const subDt = dt / substeps;
+        for (let s = 0; s < substeps && !settled; s++) {
+          dropVelocity += gravity * subDt;
+          dropY -= dropVelocity * subDt;
+
+          if (dropY <= dropEndY) {
+            dropY = dropEndY;
+            bounceCount++;
+
+            if (Math.abs(dropVelocity) > 10 && bounceCount < 4) {
+              dropVelocity = -dropVelocity * restitution;
+              impactWobble = (0.03 / bounceCount) * (Math.random() > 0.5 ? 1 : -1);
+              wobbleDecay = 0;
+            } else {
+              dropVelocity = 0;
+              dropY = dropEndY;
+              settled = true;
+              heroAnimDone = true;
+            }
+          }
+        }
+
+        if (impactWobble !== 0) {
+          wobbleDecay += dt * 6;
+          const wobble = impactWobble * Math.sin(wobbleDecay * 12) * Math.exp(-wobbleDecay * 3);
+          pen.rotation.z = -Math.PI / 2 + wobble;
+        }
+
+        pen.position.y = dropY;
         requestAnimationFrame(heroAnim);
       } else {
-        pen.scale.set(0.9, 0.9, 0.9);
+        pen.position.y = dropEndY;
+        pen.rotation.z = -Math.PI / 2;
       }
     };
     requestAnimationFrame(heroAnim);
@@ -564,8 +613,10 @@ export default function WonderPen() {
 
         pen.rotation.z = rotZ;
         pen.rotation.x = Math.PI;
-        pen.position.y = yOffset;
-        pen.scale.set(scale, scale, scale);
+        if (heroAnimDone) {
+          pen.position.y = yOffset;
+          pen.scale.set(scale, scale, scale);
+        }
 
         // Ambient rotation only in hero — hover pause + flick-to-spin
         if (progress < 0.05) {
@@ -577,7 +628,10 @@ export default function WonderPen() {
           }
 
           const dt = Math.min(wallDelta, 0.033);
-          const ambientRate = -THREE.MathUtils.degToRad(8.0) * dt;
+          const timeSinceLoad = (now - startTime) / 1000;
+          const rotationDelay = 2.0; // approx drop settle time
+          const rotRampUp = Math.max(0, Math.min((timeSinceLoad - rotationDelay) / 0.5, 1));
+          const ambientRate = -THREE.MathUtils.degToRad(8.0) * dt * rotRampUp;
 
           if (isDraggingPen) {
             // While dragging — directly follow mouse via accumulated deltas
