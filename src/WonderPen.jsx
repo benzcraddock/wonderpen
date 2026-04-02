@@ -4,8 +4,12 @@ import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 
 // ─── Constants ──────────────────────────────────────────────────────
 const MATERIALS = [
-  { name: 'Onyx', color: '#1A1A1A', roughness: 0.8, metalness: 0.2 },
-  { name: 'Bone', color: '#E5E0DA', roughness: 0.82, metalness: 0.08 },
+  { name: 'Onyx', color: '#1A1A1A', roughness: 0.8, metalness: 0.2, logoColor: null },
+  { name: 'Bone', color: '#E5E0DA', roughness: 0.82, metalness: 0.08, logoColor: null },
+  { name: 'Slate', color: '#4A5568', roughness: 0.78, metalness: 0.15, logoColor: null },
+  { name: 'Midnight', color: '#1A1F2E', roughness: 0.78, metalness: 0.18, logoColor: null },
+  { name: 'Moss', color: '#3D4A3E', roughness: 0.82, metalness: 0.12, logoColor: null },
+  { name: 'No. 2', color: '#DAA520', roughness: 0.88, metalness: 0.05, logoColor: 'rgba(180, 30, 30, 0.9)', tipColor: '#C4A87C' },
 ];
 
 const DARK_BG = '#0A0A0A';
@@ -279,12 +283,17 @@ function updateBrandLogo(pen, mat) {
   const ctx = canvas.getContext('2d');
   ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-  const baseColor = new THREE.Color(mat.color);
-  const luminance = baseColor.r * 0.299 + baseColor.g * 0.587 + baseColor.b * 0.114;
-  const logoAlpha = 0.9;
-  const logoFill = luminance > 0.5
-    ? `rgba(10, 10, 15, ${logoAlpha})`
-    : `rgba(200, 200, 215, ${logoAlpha})`;
+  let logoFill;
+  if (mat.logoColor) {
+    logoFill = mat.logoColor;
+  } else {
+    const baseColor = new THREE.Color(mat.color);
+    const luminance = baseColor.r * 0.299 + baseColor.g * 0.587 + baseColor.b * 0.114;
+    const logoAlpha = 0.9;
+    logoFill = luminance > 0.5
+      ? `rgba(10, 10, 15, ${logoAlpha})`
+      : `rgba(200, 200, 215, ${logoAlpha})`;
+  }
 
   ctx.save();
   ctx.translate(256 - 61 * 3.5 / 2, 145 - 34 * 3.5 / 2);
@@ -663,6 +672,7 @@ export default function WonderPen() {
           }
 
           pen.rotation.y = heroRotY;
+
         }
 
         // When returning from interactive, capture pen rotation and reset controls
@@ -785,6 +795,7 @@ export default function WonderPen() {
 
     const mat = MATERIALS[index];
     const targetColor = new THREE.Color(mat.color);
+    const tipTargetColor = mat.tipColor ? new THREE.Color(mat.tipColor) : targetColor;
 
     // Update logo immediately
     updateBrandLogo(pen, mat);
@@ -796,12 +807,14 @@ export default function WonderPen() {
     // Get current colors from pen parts
     const parts = [];
     pen.traverse((child) => {
-      if (child.isMesh && child.name !== 'seam' && child.name !== 'brand') {
+      if (child.isMesh && child.name !== 'brand') {
         parts.push({
           mesh: child,
           startColor: child.material.color.clone(),
           startRoughness: child.material.roughness,
           startMetalness: child.material.metalness,
+          isTip: child.name === 'tip',
+          isSeam: child.name === 'seam',
         });
       }
     });
@@ -812,8 +825,17 @@ export default function WonderPen() {
       // ease-in-out
       const ease = t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2;
 
-      parts.forEach(({ mesh, startColor, startRoughness, startMetalness }) => {
-        mesh.material.color.copy(startColor).lerp(targetColor, ease);
+      parts.forEach(({ mesh, startColor, startRoughness, startMetalness, isTip, isSeam }) => {
+        let target;
+        if (isSeam) {
+          // Seam ring: contrasting silver/bright against material
+          const baseColor = new THREE.Color(mat.color);
+          const lum = baseColor.r * 0.299 + baseColor.g * 0.587 + baseColor.b * 0.114;
+          target = lum > 0.4 ? new THREE.Color('#555560') : new THREE.Color('#999AA0');
+        } else {
+          target = isTip ? tipTargetColor : targetColor;
+        }
+        mesh.material.color.copy(startColor).lerp(target, ease);
         mesh.material.roughness = startRoughness + (mat.roughness - startRoughness) * ease;
         mesh.material.metalness = startMetalness + (mat.metalness - startMetalness) * ease;
 
