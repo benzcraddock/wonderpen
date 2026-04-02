@@ -1425,7 +1425,7 @@ export default function WonderPen() {
   const heroOpacity = section === 'hero' ? 1 : Math.max(0, 1 - scrollProgress * 5);
   const interactiveOpacity = isInteractive ? 1 : Math.max(0, (scrollProgress - 0.85) * 6.67);
   // Nav color transition — only changes once fully in interactive/dark
-  const navProgress = isInteractive || isCta ? 1 : Math.min(Math.max((scrollProgress - 0.85) * 6.67, 0), 1);
+  const navProgress = isInteractive || isCta ? 1 : Math.min(Math.max((scrollProgress - 0.3) * 1.43, 0), 1);
 
   return (
     <div style={{ position: 'relative' }}>
@@ -1608,7 +1608,7 @@ export default function WonderPen() {
         {/* Section Title */}
         <div style={{
           position: 'absolute',
-          top: isMobile ? '8vh' : '12vh',
+          top: isMobile ? '10vh' : '18vh',
           width: '100%',
           textAlign: 'center',
         }}>
