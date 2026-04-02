@@ -5,10 +5,10 @@ import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 // ─── Constants ──────────────────────────────────────────────────────
 const MATERIALS = [
   { name: 'Onyx', color: '#1A1A1A', roughness: 0.8, metalness: 0.2, logoColor: null },
-  { name: 'Bone', color: '#E5E0DA', roughness: 0.82, metalness: 0.08, logoColor: null },
-  { name: 'Slate', color: '#4A5568', roughness: 0.78, metalness: 0.15, logoColor: null },
   { name: 'Night', color: '#1A1F2E', roughness: 0.78, metalness: 0.18, logoColor: null },
   { name: 'Moss', color: '#3D4A3E', roughness: 0.82, metalness: 0.12, logoColor: null },
+  { name: 'Bone', color: '#E5E0DA', roughness: 0.82, metalness: 0.08, logoColor: null },
+  { name: 'Slate', color: '#4A5568', roughness: 0.78, metalness: 0.15, logoColor: null },
   { name: 'No. 2', color: '#DAA520', roughness: 0.88, metalness: 0.05, logoColor: 'rgba(180, 30, 30, 0.9)', tipColor: '#C4A87C' },
   { name: 'Holo', color: '#C0C0C8', roughness: 0.1, metalness: 0.95, logoColor: null, holographic: true },
 ];
@@ -341,6 +341,14 @@ function pathLength(points) {
 
 // ─── Component ──────────────────────────────────────────────────────
 export default function WonderPen() {
+  // Always start at top on load/refresh
+  useEffect(() => {
+    if ('scrollRestoration' in history) {
+      history.scrollRestoration = 'manual';
+    }
+    window.scrollTo(0, 0);
+  }, []);
+
   const containerRef = useRef(null);
   const canvasOverlayRef = useRef(null);
   const threeCanvasRef = useRef(null);
@@ -702,8 +710,9 @@ export default function WonderPen() {
             const smoothDx = totalDx / Math.max(dragHistory.length, 1);
             heroRotY += smoothDx * 0.004;
           } else {
-            // Frame-rate independent friction: decay per second, not per frame
-            const friction = Math.pow(0.3, dt); // ~70% decay per second
+            // Frame-rate independent friction — much stronger when hovering
+            const baseFriction = hoveringPen ? 0.02 : 0.3; // 98% vs 70% decay/sec
+            const friction = Math.pow(baseFriction, dt);
             angularVelocity *= friction;
 
             // Smoothly blend user velocity toward ambient speed
@@ -884,9 +893,87 @@ export default function WonderPen() {
     // Update logo immediately
     updateBrandLogo(pen, mat);
 
-    // Animate material transition + shimmer
+    // ── Sound effect — piano-like tone per material ──
+    // Onyx=Ab4, Bone=C5, Slate=Eb5, Night=Eb5, Moss=G5, No.2=Bb5, Holo=Ab5
+    const pianoNotes = [415.30, 523.25, 622.25, 783.99, 622.25, 523.25, 415.30];
+    // Onyx=Ab, Night=C, Moss=Eb, Bone=G, Slate=Eb, No.2=C, Holo=Ab
+    try {
+      const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      const freq = pianoNotes[index] || 523.25;
+      const now = audioCtx.currentTime;
+
+      // Fundamental — warm sine
+      const osc1 = audioCtx.createOscillator();
+      const gain1 = audioCtx.createGain();
+      osc1.type = 'sine';
+      osc1.frequency.setValueAtTime(freq, now);
+      gain1.gain.setValueAtTime(0.08, now);
+      gain1.gain.setValueAtTime(0.08, now + 0.01);
+      gain1.gain.exponentialRampToValueAtTime(0.04, now + 0.15);
+      gain1.gain.exponentialRampToValueAtTime(0.001, now + 1.2);
+      osc1.connect(gain1);
+      gain1.connect(audioCtx.destination);
+      osc1.start(now);
+      osc1.stop(now + 1.2);
+
+      // 2nd harmonic — adds body
+      const osc2 = audioCtx.createOscillator();
+      const gain2 = audioCtx.createGain();
+      osc2.type = 'sine';
+      osc2.frequency.setValueAtTime(freq * 2, now);
+      gain2.gain.setValueAtTime(0.04, now);
+      gain2.gain.exponentialRampToValueAtTime(0.001, now + 0.6);
+      osc2.connect(gain2);
+      gain2.connect(audioCtx.destination);
+      osc2.start(now);
+      osc2.stop(now + 0.6);
+
+      // 3rd harmonic — brightness
+      const osc3 = audioCtx.createOscillator();
+      const gain3 = audioCtx.createGain();
+      osc3.type = 'sine';
+      osc3.frequency.setValueAtTime(freq * 3, now);
+      gain3.gain.setValueAtTime(0.015, now);
+      gain3.gain.exponentialRampToValueAtTime(0.001, now + 0.3);
+      osc3.connect(gain3);
+      gain3.connect(audioCtx.destination);
+      osc3.start(now);
+      osc3.stop(now + 0.3);
+
+    } catch (e) { /* audio not available */ }
+
+    // Animate material transition + spin + particles
     const startTime = performance.now();
-    const duration = 600;
+    const duration = 1000;
+    const startRotY = pen.rotation.y;
+
+    // ── Spawn particles — subtle floating orbs ──
+    const { scene } = sceneRef.current;
+    const particles = [];
+    const particleCount = 10;
+    for (let i = 0; i < particleCount; i++) {
+      const size = 0.15 + Math.random() * 0.2;
+      const pGeo = new THREE.SphereGeometry(size, 8, 8);
+      const pMat = new THREE.MeshBasicMaterial({
+        color: new THREE.Color(mat.color).lerp(new THREE.Color(0xffffff), 0.2),
+        transparent: true,
+        opacity: 0.6,
+      });
+      const particle = new THREE.Mesh(pGeo, pMat);
+      // Gentle upward drift with slight spread
+      particle.userData.vel = new THREE.Vector3(
+        (Math.random() - 0.5) * 8,
+        10 + Math.random() * 15,
+        (Math.random() - 0.5) * 8
+      );
+      particle.position.set(
+        pen.position.x + (Math.random() - 0.5) * 20,
+        pen.position.y + (Math.random() - 0.5) * 10,
+        pen.position.z + (Math.random() - 0.5) * 5
+      );
+      scene.add(particle);
+      particles.push(particle);
+    }
 
     // Get current colors from pen parts
     const parts = [];
@@ -909,10 +996,23 @@ export default function WonderPen() {
       // ease-in-out
       const ease = t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2;
 
+      // ── 360 spin — ease-out for graceful deceleration ──
+      const spinEase = 1 - Math.pow(1 - t, 3);
+      pen.rotation.y = startRotY - spinEase * Math.PI * 2;
+
+      // ── Animate particles — gentle float up and fade ──
+      const pdt = elapsed / 1000;
+      particles.forEach((p) => {
+        p.position.x += p.userData.vel.x * 0.016;
+        p.position.y += p.userData.vel.y * 0.016;
+        p.position.z += p.userData.vel.z * 0.016;
+        p.material.opacity = Math.max(0, 0.6 * (1 - t));
+        p.scale.setScalar(1 - t * 0.3);
+      });
+
       parts.forEach(({ mesh, startColor, startRoughness, startMetalness, isTip, isSeam }) => {
         let target;
         if (isSeam) {
-          // Seam ring: contrasting silver/bright against material
           const baseColor = new THREE.Color(mat.color);
           const lum = baseColor.r * 0.299 + baseColor.g * 0.587 + baseColor.b * 0.114;
           target = lum > 0.4 ? new THREE.Color('#555560') : new THREE.Color('#999AA0');
@@ -923,15 +1023,22 @@ export default function WonderPen() {
         mesh.material.roughness = startRoughness + (mat.roughness - startRoughness) * ease;
         mesh.material.metalness = startMetalness + (mat.metalness - startMetalness) * ease;
 
-        // Shimmer effect: pulse emissive
-        const shimmer = Math.sin(t * Math.PI) * 0.4;
-        mesh.material.emissive = new THREE.Color(0xffffff);
+        // Subtle glow using target color
+        const shimmer = Math.sin(t * Math.PI) * 0.15;
+        mesh.material.emissive = target.clone();
         mesh.material.emissiveIntensity = shimmer;
       });
 
       if (t < 1) {
         requestAnimationFrame(animateSwitch);
       } else {
+        // Clean up particles
+        particles.forEach((p) => {
+          scene.remove(p);
+          p.geometry.dispose();
+          p.material.dispose();
+        });
+
         parts.forEach(({ mesh, isSeam }) => {
           mesh.material.emissiveIntensity = 0;
           // Apply/remove iridescence for holographic material
