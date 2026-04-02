@@ -959,9 +959,9 @@ export default function WonderPen() {
       setScrollY(progress);
 
       // Update iOS status bar color to match background
-      const themeMetaEl = document.querySelector('meta[name="theme-color"]:not([media])') || document.querySelector('meta[name="theme-color"]');
+      const themeMetaEl = document.querySelector('meta[name="theme-color"]');
       if (themeMetaEl) {
-        themeMetaEl.setAttribute('content', progress > 0.5 ? '#0A0A0A' : '#F5F5F7');
+        themeMetaEl.setAttribute('content', progress < 0.1 ? '#F5F5F7' : '#0A0A0A');
       }
 
       // Check if scrolled past interactive into CTA
