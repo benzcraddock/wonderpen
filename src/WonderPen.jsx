@@ -1125,7 +1125,7 @@ export default function WonderPen() {
       pen.rotation.y = startRotY - spinEase * Math.PI * 2;
 
       // ── Scale burst — grows then settles back ──
-      const scaleBurst = Math.sin(t * Math.PI) * 0.15;
+      const scaleBurst = Math.sin(t * Math.PI) * 0.3;
       const s = startScale + scaleBurst;
       pen.scale.set(s, s, s);
 
