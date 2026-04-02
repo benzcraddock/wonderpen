@@ -4,12 +4,12 @@ import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 
 // ─── Constants ──────────────────────────────────────────────────────
 const MATERIALS = [
-  { name: 'Onyx', color: '#1A1A1A', roughness: 0.85, metalness: 0.1 },
-  { name: 'Bone', color: '#F0F0F0', roughness: 0.85, metalness: 0.1 },
+  { name: 'Onyx', color: '#1A1A1A', roughness: 0.8, metalness: 0.2 },
+  { name: 'Bone', color: '#E5E0DA', roughness: 0.82, metalness: 0.08 },
 ];
 
 const DARK_BG = '#0A0A0A';
-const LIGHT_BG = '#FAFAFA';
+const LIGHT_BG = '#F5F5F7';
 
 // ─── Pen Geometry Builder (Apple Pencil Gen 2 style) ────────────────
 function createPenBody(radius, length, segments, flatDepth) {
@@ -1347,7 +1347,7 @@ export default function WonderPen() {
           textTransform: 'uppercase',
           marginBottom: '40px',
         }}>
-          Coming soon. Be the first to know.
+          Ships Spring 2027. Secure your spot.
         </p>
         <button
           style={{
